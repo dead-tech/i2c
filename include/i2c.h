@@ -1,8 +1,6 @@
 #ifndef I2C_H
 #define I2C_H
 
-#define I2C_IMPLEMENTATION
-
 #include <avr/io.h>
 #include <stdint.h>
 #include <stdbool.h>
