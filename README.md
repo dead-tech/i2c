@@ -1,3 +1,5 @@
+![Build Examples](https://github.com/dead-tech/i2c/workflows/Build%20Examples/badge.svg)
+
 # I2C protocol
 
 This is a library that aims to implement the [I2C protocol](https://en.wikipedia.org/wiki/I%C2%B2C) for AVR architecture.
