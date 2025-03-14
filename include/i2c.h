@@ -28,6 +28,13 @@ typedef struct
     uint8_t slave_address;
 } I2C;
 
+typedef enum
+{
+    OP_REQUEST_WRITE = 0,
+    OP_REQUEST_READ  = 1,
+    OP_REQUEST_NOT_FOR_ME,
+} OpRequest;
+
 
 void i2c_init(I2C* i2c, const uint8_t slave_address);
 void i2c_scl_high(I2C* i2c);
@@ -46,6 +53,65 @@ void i2c_write_slave_address(I2C* i2c, bool read_or_write);
 void i2c_write_register_address(I2C* i2c, const uint8_t register_address);
 void i2c_write_to_slave_register(I2C* i2c, const uint8_t register_address, const uint8_t payload);
 bool i2c_read_from_slave_register(I2C* i2c, const uint8_t register_address, uint8_t* result);
+
+OpRequest i2c_slave_listen(I2C* i2c);
+void i2c_slave_receive(I2C* i2c, uint8_t* register_map);
+void i2c_slave_send(I2C* i2c, uint8_t* register_map);
+
+// Example master code
+/*
+    #include "i2c.h"
+    I2C i2c;
+
+    void setup() {
+        Serial.begin(9600);
+        i2c_init(&i2c, 0x10); // Slave address
+
+        // Send data
+        if (i2c_write_to_slave_register(&i2c, 0x01, 0x55)) {
+            Serial.println("Sent: 0x55");
+        }
+
+        // Read data
+        uint8_t received;
+        if (i2c_read_from_slave_register(&i2c, 0x01, &received)) {
+            Serial.print("Received: ");
+            Serial.println(received, HEX);
+        }
+    }
+
+    void loop() {
+        // Nothing in loop
+    }
+*/
+
+
+// Example slave code
+/*
+    #include "i2c.h"
+
+    I2C i2c;
+    uint8_t register_map[256] = {0}; // Emulating registers
+
+    void setup() {
+        Serial.begin(9600);
+        i2c_slave_init(&i2c, 0x10); // Set slave address
+
+        Serial.println("I2C Slave Ready!");
+    }
+
+    void loop() {
+        bool master_wants_to_read = i2c_slave_listen(&i2c);
+
+        if (master_wants_to_read) {
+            Serial.println("Master requested data");
+            i2c_slave_send(&i2c, register_map);
+        } else {
+            Serial.println("Master is writing");
+            i2c_slave_receive(&i2c, register_map);
+        }
+    }
+*/
 
 #ifdef I2C_IMPLEMENTATION
 
@@ -244,6 +310,42 @@ bool i2c_read_from_slave_register(I2C* i2c, const uint8_t register_address, uint
     i2c_send_nack(i2c);
     i2c_stop_condition(i2c);
     return true;
+}
+
+OpRequest i2c_slave_listen(I2C* i2c)
+{
+    // Wait for start condition indefinitely
+    while ((PIND & i2c->scl_mask) == 0);
+    while ((PIND & i2c->sda_mask ) != 0);
+
+    const uint8_t received_address = i2c_read_byte(i2c);
+    i2c_send_ack(i2c);
+    if (received_address >> 1 == i2c->slave_address) {
+        return (OpRequest) received_address & 0x1;
+    }
+
+    return OP_REQUEST_NOT_FOR_ME;
+}
+
+void i2c_slave_receive(I2C* i2c, uint8_t* register_map)
+{
+    const uint8_t register_address = i2c_read_byte(i2c);
+    i2c_send_ack(i2c);
+
+    uint8_t data = i2c_read_byte(i2c);
+    i2c_send_ack(i2c);
+    register_map[register_address] = data;
+}
+
+void i2c_slave_send(I2C* i2c, uint8_t* register_map)
+{
+    const uint8_t register_address = i2c_read_byte(i2c);
+    i2c_send_ack(i2c);
+
+    i2c_write_byte(i2c, register_map[register_address]);
+    if (!i2c_check_ack(i2c)) {
+        i2c_stop_condition(i2c);
+    }
 }
 
 #endif // I2C_IMPLEMENTATION
