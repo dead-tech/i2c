@@ -38,12 +38,13 @@ void i2c_start_condition(I2C* i2c);
 void i2c_write_byte(I2C* i2c, const uint8_t byte);
 uint8_t i2c_read_byte(I2C* i2c);
 bool i2c_check_ack(I2C* i2c);
+void i2c_send_ack(I2C* i2c);
 void i2c_send_nack(I2C* i2c);
 void i2c_stop_condition(I2C* i2c);
 
 void i2c_write_slave_address(I2C* i2c, bool read_or_write);
 void i2c_write_register_address(I2C* i2c, const uint8_t register_address);
-bool i2c_write_to_slave_register(I2C* i2c, const uint8_t register_address, const uint8_t payload);
+void i2c_write_to_slave_register(I2C* i2c, const uint8_t register_address, const uint8_t payload);
 bool i2c_read_from_slave_register(I2C* i2c, const uint8_t register_address, uint8_t* result);
 
 #ifdef I2C_IMPLEMENTATION
@@ -143,7 +144,7 @@ bool i2c_check_ack(I2C* i2c)
     return ack;
 }
 
-void i2c_send_nack(I2C* i2c)
+void i2c_send_ack(I2C* i2c)
 {
     i2c_sda_low(i2c);
     i2c_scl_high(i2c);
@@ -151,6 +152,13 @@ void i2c_send_nack(I2C* i2c)
 
     // Release data line
     i2c_sda_high(i2c);
+}
+
+void i2c_send_nack(I2C* i2c)
+{
+    i2c_sda_high(i2c);
+    i2c_scl_high(i2c);
+    i2c_scl_low(i2c);
 }
 
 void i2c_stop_condition(I2C* i2c)
@@ -193,21 +201,26 @@ void i2c_write_register_address(I2C* i2c, const uint8_t register_address)
     i2c_write_byte(i2c, register_address);
 }
 
-bool i2c_write_to_slave_register(I2C* i2c, const uint8_t register_address, const uint8_t payload)
+void i2c_write_to_slave_register(I2C* i2c, const uint8_t register_address, const uint8_t payload)
 {
     i2c_start_condition(i2c);
 
     i2c_write_slave_address(i2c, 0);
-    VERIFY(i2c_check_ack(i2c));
+    if (!i2c_check_ack(i2c)) {
+        i2c_stop_condition(i2c);
+    }
 
     i2c_write_register_address(i2c, register_address);
-    VERIFY(i2c_check_ack(i2c));
+    if (!i2c_check_ack(i2c)) {
+        i2c_stop_condition(i2c);
+    }
 
     i2c_write_byte(i2c, payload);
-    VERIFY(i2c_check_ack(i2c));
+    if (!i2c_check_ack(i2c)) {
+        i2c_stop_condition(i2c);
+    }
 
     i2c_stop_condition(i2c);
-    return true;
 }
 
 bool i2c_read_from_slave_register(I2C* i2c, const uint8_t register_address, uint8_t* result)
