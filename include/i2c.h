@@ -5,6 +5,14 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#ifdef AVR_AT_MEGA_328P
+    #define DDR_GENERAL DDRC
+    #define PORT_GENERAL PORTC
+#else
+    #define DDR_GENERAL DDRD
+    #define PORT_GENERAL PORTC
+#endif
+
 #define VERIFY(cond) \
     do { \
         if (!cond) return cond; \
@@ -33,6 +41,27 @@ typedef enum
     OP_REQUEST_NOT_FOR_ME,
 } OpRequest;
 
+typedef enum
+{
+    I2C_ERROR_WRITE_SLAVE_ADDRESS = 0,
+    I2C_ERROR_WRITE_SLAVE_REGISTER,
+    I2C_ERROR_WRITE_SLAVE_PAYLOAD,
+    I2C_ERROR_SLAVE_SEND_PAYLOAD,
+
+    I2C_ERROR_SUCCESS,
+} I2C_Error;
+
+static const char* error_lookup_table[I2C_ERROR_SUCCESS] = {
+    [I2C_ERROR_WRITE_SLAVE_ADDRESS] = "master failed to write slave address",
+    [I2C_ERROR_WRITE_SLAVE_REGISTER] = "master failed to write slave register",
+    [I2C_ERROR_WRITE_SLAVE_PAYLOAD] = "master failed to write payload to slave",
+    [I2C_ERROR_SLAVE_SEND_PAYLOAD] = "slave failed to write payload to master",
+};
+
+const char* i2c_error_str(int error)
+{
+    return error_lookup_table[error];
+}
 
 void i2c_init(I2C* i2c, const uint8_t slave_address);
 void i2c_scl_high(I2C* i2c);
@@ -49,12 +78,12 @@ void i2c_stop_condition(I2C* i2c);
 
 void i2c_write_slave_address(I2C* i2c, bool read_or_write);
 void i2c_write_register_address(I2C* i2c, const uint8_t register_address);
-void i2c_write_to_slave_register(I2C* i2c, const uint8_t register_address, const uint8_t payload);
-bool i2c_read_from_slave_register(I2C* i2c, const uint8_t register_address, uint8_t* result);
+int i2c_write_to_slave_register(I2C* i2c, const uint8_t register_address, const uint8_t payload);
+int i2c_read_from_slave_register(I2C* i2c, const uint8_t register_address, uint8_t* result);
 
 OpRequest i2c_slave_listen(I2C* i2c);
-void i2c_slave_receive(I2C* i2c, uint8_t* register_map);
-void i2c_slave_send(I2C* i2c, uint8_t* register_map);
+int i2c_slave_receive(I2C* i2c, uint8_t* register_map);
+int i2c_slave_send(I2C* i2c, uint8_t* register_map);
 
 // Example master code
 /*
@@ -120,31 +149,31 @@ void i2c_init(I2C* i2c, const uint8_t slave_address)
     i2c->slave_address = slave_address;
 
     // Set SCL & SDA to INPUT PULLUP & LOW
-    // Basically the PORTD is always going to stay low
+    // Basically the PORT is always going to stay low
     // but we are going to change 'state' by changing
     // the data direction register.
-    DDRD  &= ~(i2c->scl_mask | i2c->sda_mask);
-    PORTD &= ~(i2c->scl_mask | i2c->sda_mask);
+    DDR_GENERAL  &= ~(i2c->scl_mask | i2c->sda_mask);
+    PORT_GENERAL &= ~(i2c->scl_mask | i2c->sda_mask);
 }
 
 void i2c_scl_high(I2C* i2c)
 {
-    DDRD &= ~(i2c->scl_mask);
+    DDR_GENERAL &= ~(i2c->scl_mask);
 }
 
 void i2c_scl_low(I2C* i2c)
 {
-    DDRD |= i2c->scl_mask;
+    DDR_GENERAL |= i2c->scl_mask;
 }
 
 void i2c_sda_high(I2C* i2c)
 {
-    DDRD &= ~(i2c->sda_mask);
+    DDR_GENERAL &= ~(i2c->sda_mask);
 }
 
 void i2c_sda_low(I2C* i2c)
 {
-    DDRD |= i2c->sda_mask;
+    DDR_GENERAL |= i2c->sda_mask;
 }
 
 // From: https://en.wikipedia.org/wiki/I%C2%B2C
@@ -169,6 +198,7 @@ void i2c_write_byte(I2C* i2c, const uint8_t byte)
         } else {
             i2c_sda_low(i2c);
         }
+
 
         i2c_scl_high(i2c);
         i2c_scl_low(i2c);
@@ -265,49 +295,62 @@ void i2c_write_register_address(I2C* i2c, const uint8_t register_address)
     i2c_write_byte(i2c, register_address);
 }
 
-void i2c_write_to_slave_register(I2C* i2c, const uint8_t register_address, const uint8_t payload)
+int i2c_write_to_slave_register(I2C* i2c, const uint8_t register_address, const uint8_t payload)
 {
     i2c_start_condition(i2c);
 
     i2c_write_slave_address(i2c, 0);
     if (!i2c_check_ack(i2c)) {
         i2c_stop_condition(i2c);
+        return I2C_ERROR_WRITE_SLAVE_ADDRESS;
     }
 
     i2c_write_register_address(i2c, register_address);
     if (!i2c_check_ack(i2c)) {
         i2c_stop_condition(i2c);
+        return I2C_ERROR_WRITE_SLAVE_REGISTER;
     }
 
     i2c_write_byte(i2c, payload);
     if (!i2c_check_ack(i2c)) {
         i2c_stop_condition(i2c);
+        return I2C_ERROR_WRITE_SLAVE_PAYLOAD;
     }
 
     i2c_stop_condition(i2c);
+    return I2C_ERROR_SUCCESS;
 }
 
-bool i2c_read_from_slave_register(I2C* i2c, const uint8_t register_address, uint8_t* result)
+int i2c_read_from_slave_register(I2C* i2c, const uint8_t register_address, uint8_t* result)
 {
     i2c_start_condition(i2c);
 
     i2c_write_slave_address(i2c, 0);
-    VERIFY(i2c_check_ack(i2c));
+    if (!i2c_check_ack(i2c)) {
+        i2c_stop_condition(i2c);
+        return I2C_ERROR_WRITE_SLAVE_ADDRESS;
+    }
 
     i2c_write_register_address(i2c, register_address);
-    VERIFY(i2c_check_ack(i2c));
+    if (!i2c_check_ack(i2c)) {
+        i2c_stop_condition(i2c);
+        return I2C_ERROR_WRITE_SLAVE_REGISTER;
+    }
 
     // Repeated start
     i2c_start_condition(i2c);
     i2c_write_slave_address(i2c, 1);
-    VERIFY(i2c_check_ack(i2c));
+    if (!i2c_check_ack(i2c)) {
+        i2c_stop_condition(i2c);
+        return I2C_ERROR_WRITE_SLAVE_ADDRESS;
+    }
 
     *result = i2c_read_byte(i2c);
 
     // NACK used to tell the slave we are done reading
     i2c_send_nack(i2c);
     i2c_stop_condition(i2c);
-    return true;
+    return I2C_ERROR_SUCCESS;
 }
 
 OpRequest i2c_slave_listen(I2C* i2c)
@@ -325,7 +368,7 @@ OpRequest i2c_slave_listen(I2C* i2c)
     return OP_REQUEST_NOT_FOR_ME;
 }
 
-void i2c_slave_receive(I2C* i2c, uint8_t* register_map)
+int i2c_slave_receive(I2C* i2c, uint8_t* register_map)
 {
     const uint8_t register_address = i2c_read_byte(i2c);
     i2c_send_ack(i2c);
@@ -333,9 +376,10 @@ void i2c_slave_receive(I2C* i2c, uint8_t* register_map)
     uint8_t data = i2c_read_byte(i2c);
     i2c_send_ack(i2c);
     register_map[register_address] = data;
+    return I2C_ERROR_SUCCESS;
 }
 
-void i2c_slave_send(I2C* i2c, uint8_t* register_map)
+int i2c_slave_send(I2C* i2c, uint8_t* register_map)
 {
     const uint8_t register_address = i2c_read_byte(i2c);
     i2c_send_ack(i2c);
@@ -343,7 +387,10 @@ void i2c_slave_send(I2C* i2c, uint8_t* register_map)
     i2c_write_byte(i2c, register_map[register_address]);
     if (!i2c_check_ack(i2c)) {
         i2c_stop_condition(i2c);
+        return I2C_ERROR_SLAVE_SEND_PAYLOAD;
     }
+
+    return I2C_ERROR_SUCCESS;
 }
 
 #endif // I2C_IMPLEMENTATION
