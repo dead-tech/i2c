@@ -9,6 +9,7 @@ CFLAGS=-Wall -Wextra -Werror -Wshadow -Wpedantic
 CSTD=-std=gnu99
 COPTS=-O3
 CROSS_FLAGS=-mmcu=atmega2560 -DF_CPU=16000000UL -D__AVR_3_BYTE_PC__
+CROSS_FLAGS_AT_MEGA_328P=-mmcu=atmega328p -DF_CPU=16000000UL -D__AVR_3_BYTE_PC__
 INCLUDE_DIRS=-I$(UART_INCLUDE)/ -I$(I2C_INCLUDE)/
 
 AVROBJCOPY=avr-objcopy
@@ -24,15 +25,33 @@ AVRDUDE_FLAGS += -D -q -V -C /usr/share/arduino/hardware/tools/avr/../avrdude.co
 .phony: clean all
 
 all: build \
-	$(BUILD_DIR)/i2c_basic_test.elf \
+	$(BUILD_DIR)/slave.elf \
+	$(BUILD_DIR)/master.elf \
 
-$(BUILD_DIR)/%.o: $(SRC_DIR)/%.c
+$(BUILD_DIR)/uart_at_mega_328p.o: $(SRC_DIR)/uart.c
+	@echo $(CROSS_FLAGS_AT_MEGA_328P)
+	$(CC) $(CFLAGS) $(CSTD) $(COPTS) $(CROSS_FLAGS_AT_MEGA_328P) $(INCLUDE_DIRS) -c -o $@ $<
+
+$(BUILD_DIR)/slave.o: $(SRC_DIR)/slave.c
+	$(CC) $(CFLAGS) $(CSTD) $(COPTS) $(CROSS_FLAGS_AT_MEGA_328P) $(INCLUDE_DIRS) -c -o $@ $<
+
+$(BUILD_DIR)/slave.elf: $(BUILD_DIR)/slave.o $(BUILD_DIR)/uart_at_mega_328p.o
+	$(CC) $(CFLAGS) $(CSTD) $(COPTS) $(CROSS_FLAGS_AT_MEGA_328P) -o $@ $^
+
+$(BUILD_DIR)/slave.hex: $(BUILD_DIR)/slave.elf
+	avr-objcopy $(AVROBJCOPY_FLAGS) $< $@
+	avrdude -p m328p -P $(AVRDUDE_PORT) -b $(AVRDUDE_BAUDRATE) -D -q -V -C /usr/share/arduino/hardware/tools/avr/../avrdude.conf -c arduino -U flash:w:$@:i
+
+$(BUILD_DIR)/uart_at_mega_2560.o: $(SRC_DIR)/uart.c
 	$(CC) $(CFLAGS) $(CSTD) $(COPTS) $(CROSS_FLAGS) -c -o $@ $< $(INCLUDE_DIRS)
 
-$(BUILD_DIR)/%.elf: $(BUILD_DIR)/%.o $(BUILD_DIR)/uart.o
+$(BUILD_DIR)/master.o: $(SRC_DIR)/master.c
+	$(CC) $(CFLAGS) $(CSTD) $(COPTS) $(CROSS_FLAGS) -c -o $@ $< $(INCLUDE_DIRS)
+
+$(BUILD_DIR)/master.elf: $(BUILD_DIR)/master.o $(BUILD_DIR)/uart_at_mega_2560.o
 	$(CC) $(CFLAGS) $(CSTD) $(COPTS) $(CROSS_FLAGS) -o $@ $^
 
-$(BUILD_DIR)/%.hex: $(BUILD_DIR)/%.elf
+$(BUILD_DIR)/master.hex: $(BUILD_DIR)/master.elf
 	$(AVROBJCOPY) $(AVROBJCOPY_FLAGS) $< $@
 	$(AVRDUDE) $(AVRDUDE_FLAGS) -U flash:w:$@:i
 
