@@ -360,8 +360,8 @@ OpRequest i2c_slave_listen(I2C* i2c)
     while ((PIND & i2c->sda_mask ) != 0);
 
     const uint8_t received_address = i2c_read_byte(i2c);
-    i2c_send_ack(i2c);
     if (received_address >> 1 == i2c->slave_address) {
+        i2c_send_ack(i2c);
         return (OpRequest) received_address & 0x1;
     }
 
