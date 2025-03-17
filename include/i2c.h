@@ -6,10 +6,6 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#include <stdio.h>
-
-#define I2C_IMPLEMENTATION
-
 #ifdef AVR_AT_MEGA_328P
     #define DDR_GENERAL DDRC
     #define PORT_GENERAL PORTC
@@ -24,17 +20,10 @@
     #define SDA_MASK (1 << 1)
 #endif
 
-#define SIGNAL_DELAY_US 50
+#define SIGNAL_DELAY_US 100
+#define SIGNAL_DELAY_MS 5
 
-// TODO: Implement clock stretching
-// Allow slave to adjust clock speed if the master one is too fast
-// by waiting for some time for the scl line to go high when requesting it
-// as high.
 
-// We are going to assume for now that you will use PD0 (SCL) & PD1 (SDA)
-// This is because we don't have at the moment a simple way to converting
-// arbitrary ports to their physical mapping on hardware like pinMode in
-// arduino 'standard library' does.
 typedef struct
 {
     uint8_t scl_mask;
@@ -55,7 +44,6 @@ typedef enum
     I2C_ERROR_WRITE_SLAVE_REGISTER,
     I2C_ERROR_WRITE_SLAVE_PAYLOAD,
     I2C_ERROR_SLAVE_SEND_PAYLOAD,
-
     I2C_ERROR_SUCCESS,
 } I2C_Error;
 
@@ -71,30 +59,40 @@ const char* i2c_error_str(int error)
     return error_lookup_table[error];
 }
 
+/// Common API
 void i2c_init(I2C* i2c, const uint8_t slave_address);
-void i2c_scl_high(I2C* i2c);
-void i2c_scl_low(I2C* i2c);
-void i2c_sda_low(I2C* i2c);
 
-void i2c_master_start_condition(I2C* i2c);
-void i2c_master_write_byte(I2C* i2c, const uint8_t byte);
-uint8_t i2c_master_read_byte(I2C* i2c);
-bool i2c_master_check_ack(I2C* i2c);
-void i2c_master_send_ack(I2C* i2c);
-void i2c_master_send_nack(I2C* i2c);
-void i2c_master_stop_condition(I2C* i2c);
-
-void i2c_master_write_slave_address(I2C* i2c, bool read_or_write);
-void i2c_master_write_register_address(I2C* i2c, const uint8_t register_address);
+/// Master API
 int i2c_master_write_to_slave_register(I2C* i2c, const uint8_t register_address, const uint8_t payload);
 int i2c_master_read_from_slave_register(I2C* i2c, const uint8_t register_address, uint8_t* result);
 
-void i2c_slave_write_byte(I2C* i2c, const uint8_t byte);
-uint8_t i2c_slave_read_byte(I2C* i2c);
-void i2c_slave_send_ack(I2C* i2c);
-OpRequest i2c_slave_listen(I2C* i2c);
-int i2c_slave_receive(I2C* i2c, uint8_t* register_map);
-int i2c_slave_send(I2C* i2c, uint8_t* register_map);
+
+/// Slave API
+OpRequest i2c_slave_listen(I2C* i2c, uint8_t* register_address, uint8_t* payload);
+int i2c_slave_receive(I2C* i2c, uint8_t* register_map, const uint8_t register_address, const uint8_t payload);
+int i2c_slave_send(I2C* i2c, uint8_t* register_map, const uint8_t register_address, const uint8_t repeated_address);
+
+/// Internal Stuff
+
+// Common
+static void i2c_scl_high(I2C* i2c);
+static void i2c_scl_low(I2C* i2c);
+static void i2c_sda_low(I2C* i2c);
+
+// Master
+static void i2c_master_start_condition(I2C* i2c);
+static void i2c_master_write_byte(I2C* i2c, const uint8_t byte);
+static uint8_t i2c_master_read_byte(I2C* i2c);
+static bool i2c_master_check_ack(I2C* i2c);
+static void i2c_master_send_nack(I2C* i2c);
+static void i2c_master_stop_condition(I2C* i2c);
+static void i2c_master_write_slave_address(I2C* i2c, bool read_or_write);
+static void i2c_master_write_register_address(I2C* i2c, const uint8_t register_address);
+
+// Slave
+static void i2c_slave_write_byte(I2C* i2c, const uint8_t byte);
+static uint8_t i2c_slave_read_byte(I2C* i2c);
+static void i2c_slave_send_ack(I2C* i2c);
 
 #ifdef I2C_IMPLEMENTATION
 
@@ -112,7 +110,7 @@ void i2c_init(I2C* i2c, const uint8_t slave_address)
     PORT_GENERAL |= (i2c->scl_mask | i2c->sda_mask);
 }
 
-void i2c_scl_high(I2C* i2c)
+static void i2c_scl_high(I2C* i2c)
 {
     DDR_GENERAL &= ~(i2c->scl_mask);
     _delay_us(SIGNAL_DELAY_US);
@@ -121,7 +119,7 @@ void i2c_scl_high(I2C* i2c)
     _delay_us(SIGNAL_DELAY_US);
 }
 
-void i2c_scl_low(I2C* i2c)
+static void i2c_scl_low(I2C* i2c)
 {
     DDR_GENERAL |= i2c->scl_mask;
     _delay_us(SIGNAL_DELAY_US);
@@ -130,7 +128,7 @@ void i2c_scl_low(I2C* i2c)
     _delay_us(SIGNAL_DELAY_US);
 }
 
-void i2c_sda_high(I2C* i2c)
+static void i2c_sda_high(I2C* i2c)
 {
     DDR_GENERAL &= ~(i2c->sda_mask);
     _delay_us(SIGNAL_DELAY_US);
@@ -139,7 +137,7 @@ void i2c_sda_high(I2C* i2c)
     _delay_us(SIGNAL_DELAY_US);
 }
 
-void i2c_sda_low(I2C* i2c)
+static void i2c_sda_low(I2C* i2c)
 {
     DDR_GENERAL |= i2c->sda_mask;
     _delay_us(SIGNAL_DELAY_US);
@@ -151,14 +149,14 @@ void i2c_sda_low(I2C* i2c)
 // From: https://en.wikipedia.org/wiki/I%C2%B2C
 // Assumes SDA is HIGH
 // Data transfer is initiated with a start condition (S) signalled by SDA being pulled low while SCL stays high.
-void i2c_master_start_condition(I2C* i2c)
+static void i2c_master_start_condition(I2C* i2c)
 {
     i2c_scl_high(i2c);
     i2c_sda_low(i2c);
     i2c_scl_low(i2c);
 }
 
-void i2c_master_write_byte(I2C* i2c, const uint8_t byte)
+static void i2c_master_write_byte(I2C* i2c, const uint8_t byte)
 {
     // i2c_start_condition has set scl to low & sda to low
     // we write bits msb order
@@ -179,7 +177,7 @@ void i2c_master_write_byte(I2C* i2c, const uint8_t byte)
     i2c_sda_high(i2c);
 }
 
-uint8_t i2c_master_read_byte(I2C* i2c)
+static uint8_t i2c_master_read_byte(I2C* i2c)
 {
     // Reading from MSB onwards
     // We just control the clock line
@@ -195,7 +193,7 @@ uint8_t i2c_master_read_byte(I2C* i2c)
     return ret;
 }
 
-bool i2c_master_check_ack(I2C* i2c)
+static bool i2c_master_check_ack(I2C* i2c)
 {
     bool ack = false;
 
@@ -209,24 +207,14 @@ bool i2c_master_check_ack(I2C* i2c)
     return ack;
 }
 
-void i2c_master_send_ack(I2C* i2c)
-{
-    i2c_sda_low(i2c);
-    i2c_scl_high(i2c);
-    i2c_scl_low(i2c);
-
-    // Release data line
-    i2c_sda_high(i2c);
-}
-
-void i2c_master_send_nack(I2C* i2c)
+static void i2c_master_send_nack(I2C* i2c)
 {
     i2c_sda_high(i2c);
     i2c_scl_high(i2c);
     i2c_scl_low(i2c);
 }
 
-void i2c_master_stop_condition(I2C* i2c)
+static void i2c_master_stop_condition(I2C* i2c)
 {
     i2c_sda_low(i2c);
     i2c_scl_high(i2c);
@@ -234,7 +222,7 @@ void i2c_master_stop_condition(I2C* i2c)
 }
 
 // Write = 0, Read = 1
-void i2c_master_write_slave_address(I2C* i2c, bool read_or_write)
+static void i2c_master_write_slave_address(I2C* i2c, bool read_or_write)
 {
     for (uint8_t bit = 0x40; bit != 0; bit >>= 1) {
         if (i2c->slave_address & bit) {
@@ -261,75 +249,116 @@ void i2c_master_write_slave_address(I2C* i2c, bool read_or_write)
     i2c_sda_high(i2c);
 }
 
-void i2c_master_write_register_address(I2C* i2c, const uint8_t register_address)
+static void i2c_master_write_register_address(I2C* i2c, const uint8_t register_address)
 {
     i2c_master_write_byte(i2c, register_address);
 }
 
 int i2c_master_write_to_slave_register(I2C* i2c, const uint8_t register_address, const uint8_t payload)
 {
+    // 1. Send start condition
     i2c_master_start_condition(i2c);
+    _delay_ms(SIGNAL_DELAY_MS);
 
+    // 2. Send slave address
     i2c_master_write_slave_address(i2c, 0);
-    _delay_ms(SIGNAL_DELAY_US);
-    if (!i2c_master_check_ack(i2c)) {
-        i2c_master_stop_condition(i2c);
-        return I2C_ERROR_WRITE_SLAVE_ADDRESS;
+    unsigned long timeout = 100000;
+    while (!i2c_master_check_ack(i2c)) {
+        _delay_us(10);
+        if (timeout == 0) {
+            i2c_master_stop_condition(i2c);
+            return I2C_ERROR_WRITE_SLAVE_ADDRESS;
+        }
+        --timeout;
     }
 
+    // 3. Send slave target register address
     i2c_master_write_register_address(i2c, register_address);
-    _delay_ms(SIGNAL_DELAY_US);
-    if (!i2c_master_check_ack(i2c)) {
-        i2c_master_stop_condition(i2c);
-        return I2C_ERROR_WRITE_SLAVE_REGISTER;
+    timeout = 100000;
+    while (!i2c_master_check_ack(i2c)) {
+        _delay_us(10);
+        if (timeout == 0) {
+            i2c_master_stop_condition(i2c);
+            return I2C_ERROR_WRITE_SLAVE_REGISTER;
+        }
+        --timeout;
     }
 
+    // 4. Send the actual payload
     i2c_master_write_byte(i2c, payload);
-    if (!i2c_master_check_ack(i2c)) {
-        i2c_master_stop_condition(i2c);
-        return I2C_ERROR_WRITE_SLAVE_PAYLOAD;
+    timeout = 100000;
+    while (!i2c_master_check_ack(i2c)) {
+        _delay_us(10);
+        if (timeout == 0) {
+            i2c_master_stop_condition(i2c);
+            return I2C_ERROR_WRITE_SLAVE_PAYLOAD;
+        }
+        --timeout;
     }
 
+    // 5. Send stop condition
     i2c_master_stop_condition(i2c);
     return I2C_ERROR_SUCCESS;
 }
 
 int i2c_master_read_from_slave_register(I2C* i2c, const uint8_t register_address, uint8_t* result)
 {
+    // 1. Send start condition
     i2c_master_start_condition(i2c);
+    _delay_ms(SIGNAL_DELAY_MS);
 
+    // 2. Send slave address
     i2c_master_write_slave_address(i2c, 0);
-    if (!i2c_master_check_ack(i2c)) {
-        i2c_master_stop_condition(i2c);
-        return I2C_ERROR_WRITE_SLAVE_ADDRESS;
+    unsigned long timeout = 100000;
+    while (!i2c_master_check_ack(i2c)) {
+        _delay_us(10);
+        if (timeout == 0) {
+            i2c_master_stop_condition(i2c);
+            return I2C_ERROR_WRITE_SLAVE_ADDRESS;
+        }
+        --timeout;
     }
 
+    // 3. Send slave target register address
     i2c_master_write_register_address(i2c, register_address);
-    if (!i2c_master_check_ack(i2c)) {
-        i2c_master_stop_condition(i2c);
-        return I2C_ERROR_WRITE_SLAVE_REGISTER;
+    timeout = 100000;
+    while (!i2c_master_check_ack(i2c)) {
+        _delay_us(10);
+        if (timeout == 0) {
+            i2c_master_stop_condition(i2c);
+            return I2C_ERROR_WRITE_SLAVE_REGISTER;
+        }
+        --timeout;
     }
-    printf("hello\n");
 
-    // Repeated start
+    // 4. Send repeated start to indicate it's a read
     i2c_master_start_condition(i2c);
+    _delay_ms(SIGNAL_DELAY_MS);
 
+    // 5. Send repeated slave address
     i2c_master_write_slave_address(i2c, 1);
-    if (!i2c_master_check_ack(i2c)) {
-        i2c_master_stop_condition(i2c);
-        return I2C_ERROR_WRITE_SLAVE_ADDRESS;
+    timeout = 100000;
+    while (!i2c_master_check_ack(i2c)) {
+        _delay_us(10);
+        if (timeout == 0) {
+            i2c_master_stop_condition(i2c);
+            return I2C_ERROR_WRITE_SLAVE_ADDRESS;
+        }
+        --timeout;
     }
 
+    // 6. Actual read bytes from slave
     *result = i2c_master_read_byte(i2c);
 
-    // NACK used to tell the slave we are done reading
+    // 7. Send NACK to indicate the slave we are done reading
     i2c_master_send_nack(i2c);
 
+    // 8. Send stop condition
     i2c_master_stop_condition(i2c);
     return I2C_ERROR_SUCCESS;
 }
 
-void i2c_slave_write_byte(I2C* i2c, const uint8_t byte)
+static void i2c_slave_write_byte(I2C* i2c, const uint8_t byte)
 {
     for (uint8_t bit = 0x80; bit != 0 ; bit >>= 1) {
         if (byte & bit) {
@@ -346,7 +375,7 @@ void i2c_slave_write_byte(I2C* i2c, const uint8_t byte)
     i2c_sda_high(i2c);
 }
 
-uint8_t i2c_slave_read_byte(I2C* i2c)
+static uint8_t i2c_slave_read_byte(I2C* i2c)
 {
     uint8_t ret = 0;
     for (uint8_t bit = 0x80; bit != 0; bit >>= 1) {
@@ -360,7 +389,7 @@ uint8_t i2c_slave_read_byte(I2C* i2c)
     return ret;
 }
 
-void i2c_slave_send_ack(I2C* i2c)
+static void i2c_slave_send_ack(I2C* i2c)
 {
     i2c_sda_low(i2c);
     while ((PIN_GENERAL & i2c->scl_mask) == 0);
@@ -370,7 +399,7 @@ void i2c_slave_send_ack(I2C* i2c)
     i2c_sda_high(i2c);
 }
 
-bool i2c_slave_check_ack(I2C* i2c)
+static bool i2c_slave_check_ack(I2C* i2c)
 {
     bool ack = false;
 
@@ -384,70 +413,67 @@ bool i2c_slave_check_ack(I2C* i2c)
     return ack;
 }
 
-OpRequest i2c_slave_listen(I2C* i2c)
+static bool i2c_slave_check_repeated_start(I2C* i2c)
 {
-    // Wait for start condition
+    // Wait for SCL high (indicating stop or repeated start)
+    while ((PIN_GENERAL & i2c->scl_mask) == 0);
+
+    // Check if SDA goes from HIGH to LOW while SCL is HIGH (indicating a repeated start)
+    return !((PIN_GENERAL & i2c->sda_mask) == 0);
+}
+
+OpRequest i2c_slave_listen(I2C* i2c, uint8_t* register_address, uint8_t* payload)
+{
+    // 1. Wait for start condition
     while ((PIN_GENERAL & i2c->sda_mask) == 0);
     while ((PIN_GENERAL & i2c->scl_mask) != 0);
     while ((PIN_GENERAL & i2c->sda_mask) != 0);
 
+    // 2. Read the slave destination address and send ACK if matching
     const uint8_t received_address = i2c_slave_read_byte(i2c);
-
-    printf("received address = 0x%02x == 0x%02x\n", received_address >> 1, i2c->slave_address);
-
     if (received_address >> 1 == i2c->slave_address) {
-        printf("r/w: %d\n", received_address & 0x1);
         i2c_slave_send_ack(i2c);
-        printf("sent ack\n");
-        return (OpRequest) received_address & 0x1;
     }
 
-    return OP_REQUEST_NOT_FOR_ME;
+    // 3. Read register address and send ACK
+    *register_address = i2c_slave_read_byte(i2c);
+    i2c_slave_send_ack(i2c);
+
+    bool repeated_start = i2c_slave_check_repeated_start(i2c);
+    if (repeated_start) {
+        while ((PIN_GENERAL & i2c->sda_mask) != 0);
+    }
+
+    // Up until this point the logic is in common
+    // for both reads and writes. For reasons i do not understand
+    // at the moment i'm not able to put the following logic into
+    // the respective dispatchers, namely, i2c_slave_send, i2c_slave_receive
+    // payload so can be two things:
+    //   - in case of OP_REQUEST_READ  -> payload = repeated slave address
+    //   - in case of OP_REQUEST_WRITE -> payload = actual data
+
+    *payload = i2c_slave_read_byte(i2c);
+    // i2c_slave_send_ack(i2c);
+    if (repeated_start) {
+        return OP_REQUEST_READ;
+    } else {
+        return OP_REQUEST_WRITE;
+    }
 }
 
-// This assumes slave address and ack have already been read
-// by i2c_slave_listen()
-int i2c_slave_receive(I2C* i2c, uint8_t* register_map)
+int i2c_slave_receive(I2C* i2c, uint8_t* register_map, const uint8_t register_address, const uint8_t payload)
 {
-    // 1. Read register address and send ACK
-    const uint8_t register_address = i2c_slave_read_byte(i2c);
-
-    printf("slave received: register address = 0x%02x\n", register_address);
-
-    i2c_slave_send_ack(i2c);
-    printf("sent ack in slave_receive\n");
-
-    // 2. Read the byte, store it and send ACK
-    uint8_t data = i2c_slave_read_byte(i2c);
-    printf("slave received: payload = 0x%02x\n", data);
-
-    register_map[register_address] = data;
+    register_map[register_address] = payload;
     i2c_slave_send_ack(i2c);
     return I2C_ERROR_SUCCESS;
 }
 
-// This assumes slave address and ack have already been read
-// by i2c_slave_listen()
-int i2c_slave_send(I2C* i2c, uint8_t* register_map)
+int i2c_slave_send(I2C* i2c, uint8_t* register_map, const uint8_t register_address, const uint8_t repeated_address)
 {
-    // 1. Read register address and send ACK
-    const uint8_t register_address = i2c_slave_read_byte(i2c);
-
-    printf("slave sending: register address = 0x%02x\n", register_address);
-
-    i2c_slave_send_ack(i2c);
-
-    // 2. Read repeated start condition
-    while ((PIN_GENERAL & i2c->scl_mask) == 0);
-    while ((PIN_GENERAL & i2c->scl_mask) != 0);
-
-    // 3. Read slave address once again
-    // FIXME: Should also check that last bit is set one
-    const uint8_t slave_address = i2c_slave_read_byte(i2c);
-    if (slave_address >> 1 == i2c->slave_address) {
+    // 3. Check for repeated address
+    if (repeated_address == i2c->slave_address) {
         i2c_slave_send_ack(i2c);
 
-        printf("slave sending: payload = 0x%02x\n", register_map[register_address]);
         // 4. Write the requested register data
         i2c_slave_write_byte(i2c, register_map[register_address]);
         if (!i2c_slave_check_ack(i2c)) {

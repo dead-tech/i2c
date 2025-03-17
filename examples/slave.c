@@ -8,7 +8,6 @@
 #define SLAVE_ADDRESS 0x10
 #define REGISTER_ADDRESS 0x1
 
-// Emulating registers
 uint8_t register_map[256] = {0};
 
 int main(void)
@@ -18,22 +17,25 @@ int main(void)
 
     I2C i2c;
     i2c_init(&i2c, SLAVE_ADDRESS);
+    printf("[INFO] I2C Slave Ready!\n");
 
-    printf("I2C Slave Ready!\n");
     for (;;) {
-        printf("SDA: %d, SCL: %d\n", (PIN_GENERAL & i2c.sda_mask) != 0, (PIN_GENERAL & i2c.scl_mask) != 0);
 
-        const OpRequest request = i2c_slave_listen(&i2c);
+        uint8_t register_address = 0;
+        uint8_t payload = 0;
+        const OpRequest request = i2c_slave_listen(&i2c, &register_address, &payload);
 
         if (request == OP_REQUEST_READ) {
-            ret = i2c_slave_send(&i2c, register_map);
+            printf("[INFO] master asked to read { .slave_address, = %d, .register_address = %d, .data = %d }\n", payload, register_address, register_map[register_address]);
+            ret = i2c_slave_send(&i2c, register_map, register_address, payload);
             if (ret != I2C_ERROR_SUCCESS) {
-                printf("[ERROR] Failed to send data to master\n");
+                printf("[ERROR] Failed to send data to master: %s\n", i2c_error_str(ret));
             }
         } else if (request == OP_REQUEST_WRITE) {
-            ret = i2c_slave_receive(&i2c, register_map);
+            ret = i2c_slave_receive(&i2c, register_map, register_address, payload);
+            printf("[INFO] master asked to write { .slave_address = %d, .register_address = %d, .data = %d }\n", SLAVE_ADDRESS, register_address, payload);
             if (ret != I2C_ERROR_SUCCESS) {
-                printf("[ERROR] Failed to receive data from master\n");
+                printf("[ERROR] Failed to receive data from master: %s\n", i2c_error_str(ret));
             }
         }
     }
