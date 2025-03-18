@@ -7,6 +7,7 @@ I2C_INCLUDE=include
 CC=avr-gcc
 CFLAGS=-Wall -Wextra -Werror -Wshadow -Wpedantic
 CSTD=-std=gnu99
+CXX_STD=-std=c++17
 COPTS=-O3
 CROSS_FLAGS=-mmcu=atmega2560 -DF_CPU=16000000UL -D__AVR_3_BYTE_PC__
 CROSS_FLAGS_AT_MEGA_328P=-mmcu=atmega328p -DF_CPU=16000000UL -D__AVR_3_BYTE_PC__
@@ -27,10 +28,22 @@ AVRDUDE_FLAGS += -D -q -V -C /usr/share/arduino/hardware/tools/avr/../avrdude.co
 all: build \
 	$(BUILD_DIR)/slave.elf \
 	$(BUILD_DIR)/master.elf \
+	$(BUILD_DIR)/slave_twi.elf \
+	$(BUILD_DIR)/master_twi.elf \
 
 $(BUILD_DIR)/uart_at_mega_328p.o: $(SRC_DIR)/uart.c
 	@echo $(CROSS_FLAGS_AT_MEGA_328P)
 	$(CC) $(CFLAGS) $(CSTD) $(COPTS) $(CROSS_FLAGS_AT_MEGA_328P) $(INCLUDE_DIRS) -c -o $@ $<
+
+$(BUILD_DIR)/slave_twi.o: $(SRC_DIR)/slave_twi.cpp
+	$(CC) $(CFLAGS) $(CXX_STD) $(COPTS) $(CROSS_FLAGS_AT_MEGA_328P) $(INCLUDE_DIRS) -c -o $@ $<
+
+$(BUILD_DIR)/slave_twi.elf: $(BUILD_DIR)/slave_twi.o $(BUILD_DIR)/uart_at_mega_328p.o
+	$(CC) $(CFLAGS) $(CXX_STD) $(COPTS) $(CROSS_FLAGS_AT_MEGA_328P) -o $@ $^
+
+$(BUILD_DIR)/slave_twi.hex: $(BUILD_DIR)/slave_twi.elf
+	avr-objcopy $(AVROBJCOPY_FLAGS) $< $@
+	avrdude -p m328p -P $(AVRDUDE_PORT) -b $(AVRDUDE_BAUDRATE) -D -q -V -C /usr/share/arduino/hardware/tools/avr/../avrdude.conf -c arduino -U flash:w:$@:i
 
 $(BUILD_DIR)/slave.o: $(SRC_DIR)/slave.c
 	$(CC) $(CFLAGS) $(CSTD) $(COPTS) $(CROSS_FLAGS_AT_MEGA_328P) $(INCLUDE_DIRS) -c -o $@ $<
@@ -44,6 +57,16 @@ $(BUILD_DIR)/slave.hex: $(BUILD_DIR)/slave.elf
 
 $(BUILD_DIR)/uart_at_mega_2560.o: $(SRC_DIR)/uart.c
 	$(CC) $(CFLAGS) $(CSTD) $(COPTS) $(CROSS_FLAGS) -c -o $@ $< $(INCLUDE_DIRS)
+
+$(BUILD_DIR)/master_twi.o: $(SRC_DIR)/master_twi.cpp
+	$(CC) $(CFLAGS) $(CXX_STD) $(COPTS) $(CROSS_FLAGS) -c -o $@ $< $(INCLUDE_DIRS)
+
+$(BUILD_DIR)/master_twi.elf: $(BUILD_DIR)/master_twi.o $(BUILD_DIR)/uart_at_mega_2560.o
+	$(CC) $(CFLAGS) $(CXX_STD) $(COPTS) $(CROSS_FLAGS) -o $@ $^
+
+$(BUILD_DIR)/master_twi.hex: $(BUILD_DIR)/master_twi.elf
+	$(AVROBJCOPY) $(AVROBJCOPY_FLAGS) $< $@
+	$(AVRDUDE) $(AVRDUDE_FLAGS) -U flash:w:$@:i
 
 $(BUILD_DIR)/master.o: $(SRC_DIR)/master.c
 	$(CC) $(CFLAGS) $(CSTD) $(COPTS) $(CROSS_FLAGS) -c -o $@ $< $(INCLUDE_DIRS)
