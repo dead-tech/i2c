@@ -346,6 +346,7 @@ ISR(TWI_vect)
             } else {
                 twi_send_nack();
             }
+            break;
         }
 
         case TW_ST_DATA_NACK:
