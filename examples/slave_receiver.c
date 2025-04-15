@@ -5,6 +5,8 @@
 #define TWI_IMPLEMENTATION
 #include <twi.h>
 
+#define SLAVE_ADDRESS 0x10
+
 void receive_callback(volatile uint8_t* buffer, volatile uint8_t size)
 {
     for (uint8_t i = 0; i < size; ++i) {
@@ -19,14 +21,15 @@ int main(void)
     printf_init();
     sei();
 
-    printf("Initializing Twi Slave...");
-    twi_slave_init(0x10);
+    printf("[TWI] Receiver Slave init...");
+    twi_slave_init(SLAVE_ADDRESS);
     printf("OK\n");
 
-    printf("Setting slave receive callback...");
+    printf("[TWI] Setting receive callback...");
     twi_set_slave_receive_callback(receive_callback);
     printf("OK\n");
 
+    printf("Read data from master transmitter\n");
     for (;;) {
         _delay_ms(100);
     }
