@@ -85,7 +85,6 @@ void twi_master_write_to(
 
 void twi_slave_prepare_transmission(const uint8_t *data, const uint8_t size);
 
-#define TWI_IMPLEMENTATION
 #ifdef TWI_IMPLEMENTATION
 
 static void twi_send_start(void)
