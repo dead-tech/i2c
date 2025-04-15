@@ -51,7 +51,6 @@ static volatile uint8_t twi_master_buffer_size             = 0;
 
 static volatile uint8_t twi_read_buffer[TWI_BUFFER_SIZE] = { 0 };
 static volatile uint8_t twi_read_buffer_index            = 0;
-static volatile uint8_t twi_read_buffer_size             = 0;
 
 static volatile uint8_t twi_write_buffer[TWI_BUFFER_SIZE] = { 0 };
 static volatile uint8_t twi_write_buffer_index            = 0;
@@ -78,8 +77,6 @@ uint8_t twi_master_read_from(
   const uint8_t size
 );
 
-int twi_available_bytes(void);
-
 void twi_master_write_to(
   const uint8_t  address,
   const uint8_t *data,
@@ -88,6 +85,7 @@ void twi_master_write_to(
 
 void twi_slave_prepare_transmission(const uint8_t *data, const uint8_t size);
 
+#define TWI_IMPLEMENTATION
 #ifdef TWI_IMPLEMENTATION
 
 static void twi_send_start(void)
@@ -167,11 +165,6 @@ uint8_t
     for (uint8_t i = 0; i < read_bytes; ++i) { data[i] = twi_master_buffer[i]; }
 
     return read_bytes;
-}
-
-int twi_available_bytes(void)
-{
-    return twi_read_buffer_size - twi_read_buffer_index;
 }
 
 void twi_master_write_to(

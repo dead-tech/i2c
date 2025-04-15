@@ -25,53 +25,55 @@ AVRDUDE_FLAGS += -D -q -V -C /usr/share/arduino/hardware/tools/avr/../avrdude.co
 .phony: clean all
 
 all: build \
-	$(BUILD_DIR)/slave.elf \
-	$(BUILD_DIR)/master.elf \
+	$(BUILD_DIR)/slave_transmitter.elf \
+	$(BUILD_DIR)/slave_receiver.elf \
+	$(BUILD_DIR)/master_transmitter.elf \
+	$(BUILD_DIR)/master_receiver.elf \
 
 $(BUILD_DIR)/uart_at_mega_328p.o: $(SRC_DIR)/uart.c
 	@echo $(CROSS_FLAGS_AT_MEGA_328P)
 	$(CC) $(CFLAGS) $(CSTD) $(COPTS) $(CROSS_FLAGS_AT_MEGA_328P) $(INCLUDE_DIRS) -c -o $@ $<
 
-$(BUILD_DIR)/slave_simple.o: $(SRC_DIR)/slave_simple.c
+$(BUILD_DIR)/slave_transmitter.o: $(SRC_DIR)/slave_transmitter.c
 	$(CC) $(CFLAGS) $(CSTD) $(COPTS) $(CROSS_FLAGS_AT_MEGA_328P) $(INCLUDE_DIRS) -c -o $@ $<
 
-$(BUILD_DIR)/slave_simple.elf: $(BUILD_DIR)/slave_simple.o $(BUILD_DIR)/uart_at_mega_328p.o
+$(BUILD_DIR)/slave_transmitter.elf: $(BUILD_DIR)/slave_transmitter.o $(BUILD_DIR)/uart_at_mega_328p.o
 	$(CC) $(CFLAGS) $(CSTD) $(COPTS) $(CROSS_FLAGS_AT_MEGA_328P) -o $@ $^
 
-$(BUILD_DIR)/slave_simple.hex: $(BUILD_DIR)/slave_simple.elf
+$(BUILD_DIR)/slave_transmitter.hex: $(BUILD_DIR)/slave_transmitter.elf
 	avr-objcopy $(AVROBJCOPY_FLAGS) $< $@
 	avrdude -p m328p -P $(AVRDUDE_PORT) -b $(AVRDUDE_BAUDRATE) -D -q -V -C /usr/share/arduino/hardware/tools/avr/../avrdude.conf -c arduino -U flash:w:$@:i
 
-$(BUILD_DIR)/slave.o: $(SRC_DIR)/slave.c
+$(BUILD_DIR)/slave_receiver.o: $(SRC_DIR)/slave_receiver.c
 	$(CC) $(CFLAGS) $(CSTD) $(COPTS) $(CROSS_FLAGS_AT_MEGA_328P) $(INCLUDE_DIRS) -c -o $@ $<
 
-$(BUILD_DIR)/slave.elf: $(BUILD_DIR)/slave.o $(BUILD_DIR)/uart_at_mega_328p.o
+$(BUILD_DIR)/slave_receiver.elf: $(BUILD_DIR)/slave_receiver.o $(BUILD_DIR)/uart_at_mega_328p.o
 	$(CC) $(CFLAGS) $(CSTD) $(COPTS) $(CROSS_FLAGS_AT_MEGA_328P) -o $@ $^
 
-$(BUILD_DIR)/slave.hex: $(BUILD_DIR)/slave.elf
+$(BUILD_DIR)/slave_receiver.hex: $(BUILD_DIR)/slave_receiver.elf
 	avr-objcopy $(AVROBJCOPY_FLAGS) $< $@
 	avrdude -p m328p -P $(AVRDUDE_PORT) -b $(AVRDUDE_BAUDRATE) -D -q -V -C /usr/share/arduino/hardware/tools/avr/../avrdude.conf -c arduino -U flash:w:$@:i
 
 $(BUILD_DIR)/uart_at_mega_2560.o: $(SRC_DIR)/uart.c
 	$(CC) $(CFLAGS) $(CSTD) $(COPTS) $(CROSS_FLAGS) -c -o $@ $< $(INCLUDE_DIRS)
 
-$(BUILD_DIR)/master_simple.o: $(SRC_DIR)/master_simple.c
+$(BUILD_DIR)/master_receiver.o: $(SRC_DIR)/master_receiver.c
 	$(CC) $(CFLAGS) $(CSTD) $(COPTS) $(CROSS_FLAGS) -c -o $@ $< $(INCLUDE_DIRS)
 
-$(BUILD_DIR)/master_simple.elf: $(BUILD_DIR)/master_simple.o $(BUILD_DIR)/uart_at_mega_2560.o
+$(BUILD_DIR)/master_receiver.elf: $(BUILD_DIR)/master_receiver.o $(BUILD_DIR)/uart_at_mega_2560.o
 	$(CC) $(CFLAGS) $(CSTD) $(COPTS) $(CROSS_FLAGS) -o $@ $^
 
-$(BUILD_DIR)/master_simple.hex: $(BUILD_DIR)/master_simple.elf
+$(BUILD_DIR)/master_receiver.hex: $(BUILD_DIR)/master_receiver.elf
 	$(AVROBJCOPY) $(AVROBJCOPY_FLAGS) $< $@
 	$(AVRDUDE) $(AVRDUDE_FLAGS) -U flash:w:$@:i
 
-$(BUILD_DIR)/master.o: $(SRC_DIR)/master.c
+$(BUILD_DIR)/master_transmitter.o: $(SRC_DIR)/master_transmitter.c
 	$(CC) $(CFLAGS) $(CSTD) $(COPTS) $(CROSS_FLAGS) -c -o $@ $< $(INCLUDE_DIRS)
 
-$(BUILD_DIR)/master.elf: $(BUILD_DIR)/master.o $(BUILD_DIR)/uart_at_mega_2560.o
+$(BUILD_DIR)/master_transmitter.elf: $(BUILD_DIR)/master_transmitter.o $(BUILD_DIR)/uart_at_mega_2560.o
 	$(CC) $(CFLAGS) $(CSTD) $(COPTS) $(CROSS_FLAGS) -o $@ $^
 
-$(BUILD_DIR)/master.hex: $(BUILD_DIR)/master.elf
+$(BUILD_DIR)/master_transmitter.hex: $(BUILD_DIR)/master_transmitter.elf
 	$(AVROBJCOPY) $(AVROBJCOPY_FLAGS) $< $@
 	$(AVRDUDE) $(AVRDUDE_FLAGS) -U flash:w:$@:i
 
