@@ -94,6 +94,7 @@ static void i2c_slave_write_byte(I2C* i2c, const uint8_t byte);
 static uint8_t i2c_slave_read_byte(I2C* i2c);
 static void i2c_slave_send_ack(I2C* i2c);
 
+#define I2C_IMPLEMENTATION
 #ifdef I2C_IMPLEMENTATION
 
 void i2c_init(I2C* i2c, const uint8_t slave_address)
